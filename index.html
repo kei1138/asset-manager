@@ -481,8 +481,6 @@ function renderAssets() {
 }
 
 // ── 編集 ──
-let editingItemId = null;
-
 function startEditName(catId, itemId) {
   if(editingItemId===itemId) return;
   if(editingItemId) renderAssets();
