@@ -21,21 +21,15 @@
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 body { font-family:'Zen Kaku Gothic New',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
 
-/* ── ローディング ── */
-#loadingScreen {
-  position:fixed; inset:0; background:var(--text);
-  display:flex; align-items:center; justify-content:center;
-  z-index:999; flex-direction:column; gap:12px;
-}
-.loading-title { color:#fff; font-size:14px; letter-spacing:0.2em; opacity:0.6; }
-.spinner { width:32px; height:32px; border:2px solid rgba(255,255,255,0.2); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
-
 /* ── ログイン ── */
 #loginScreen {
-  display:none; min-height:100vh;
-  background:var(--text); align-items:center; justify-content:center; flex-direction:column;
-  padding:24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--text);
 }
 .login-title { color:#fff; font-size:14px; letter-spacing:0.25em; opacity:0.4; margin-bottom:32px; }
 .login-card { background:var(--surface); border-radius:20px; padding:24px; width:100%; max-width:360px; }
@@ -153,27 +147,20 @@ canvas.line-canvas { display:block; width:100%; }
 </head>
 <body>
 
-<!-- ローディング -->
-<div id="loadingScreen" style="display:none;position:fixed;inset:0;background:var(--text);align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px;">
-  <div class="loading-title">ASSET MANAGER</div>
-  <div class="spinner"></div>
-</div>
+<!-- ローディング不要 -->
 
 <!-- ログイン -->
-<div id="loginScreen" style="display:flex;min-height:100vh;align-items:center;justify-content:center;flex-direction:column;padding:24px;background:#1c1c2e">
+<div id="loginScreen">
   <div class="login-title">ASSET MANAGER</div>
   <div class="login-card">
-    <div class="login-tabs">
-      <button class="login-tab active" onclick="switchLoginTab('login')">ログイン</button>
-      <button class="login-tab" onclick="switchLoginTab('signup')">新規登録</button>
+    <div style="display:flex;margin-bottom:16px;border-bottom:2px solid var(--border);">
+      <div id="tab-login" onclick="switchAuthTab('login')" style="flex:1;text-align:center;padding:8px;font-size:13px;font-weight:700;cursor:pointer;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;">ログイン</div>
+      <div id="tab-signup" onclick="switchAuthTab('signup')" style="flex:1;text-align:center;padding:8px;font-size:13px;font-weight:700;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-2px;">新規登録</div>
     </div>
-    <input class="login-input" id="loginEmail" type="email" placeholder="メールアドレス">
-    <input class="login-input" id="loginPassword" type="password" placeholder="パスワード">
-    <div id="loginName" style="display:none">
-      <input class="login-input" id="loginDisplayName" type="text" placeholder="名前（任意）">
-    </div>
-    <button class="login-btn" onclick="handleAuth()">ログイン</button>
-    <div class="login-error" id="loginError"></div>
+    <input class="login-input" id="login-email" type="email" placeholder="メールアドレス" autocomplete="email">
+    <input class="login-input" id="login-pass" type="password" placeholder="パスワード" autocomplete="current-password">
+    <button class="login-btn" id="auth-btn" onclick="doAuth()">ログイン</button>
+    <div class="login-error" id="login-err"></div>
   </div>
 </div>
 
@@ -187,7 +174,7 @@ canvas.line-canvas { display:block; width:100%; }
         <div class="total-amount" id="totalAmount">¥0</div>
         <div class="updated-at" id="updatedAt"></div>
       </div>
-      <button class="signout-btn" onclick="signOut()">ログアウト</button>
+      <button class="signout-btn" onclick="doLogout()">ログアウト</button>
     </div>
   </div>
 
@@ -304,7 +291,6 @@ let nextLocalId = -1;
 let editingItemId = null;
 let selectedCatId = null;
 let currentPeriod = 'day';
-let loginMode = 'login';
 
 // ── 保存インジケーター ──
 function showSaving(msg='保存中...') {
@@ -315,104 +301,91 @@ function showSaving(msg='保存中...') {
 }
 
 // ── 認証 ──
-function switchLoginTab(mode) {
-  loginMode = mode;
-  document.querySelectorAll('.login-tab').forEach((t,i) => t.classList.toggle('active', ['login','signup'][i]===mode));
-  document.getElementById('loginName').style.display = mode==='signup' ? 'block' : 'none';
-  document.querySelector('.login-btn').textContent = mode==='login' ? 'ログイン' : '新規登録';
-  document.getElementById('loginError').textContent = '';
+let authMode = 'login';
+function switchAuthTab(mode) {
+  authMode = mode;
+  const tl = document.getElementById('tab-login');
+  const ts = document.getElementById('tab-signup');
+  const btn = document.getElementById('auth-btn');
+  if (mode === 'login') {
+    tl.style.color = 'var(--accent)'; tl.style.borderBottomColor = 'var(--accent)';
+    ts.style.color = 'var(--text3)'; ts.style.borderBottomColor = 'transparent';
+    btn.textContent = 'ログイン';
+  } else {
+    ts.style.color = 'var(--accent)'; ts.style.borderBottomColor = 'var(--accent)';
+    tl.style.color = 'var(--text3)'; tl.style.borderBottomColor = 'transparent';
+    btn.textContent = '新規登録';
+  }
+  document.getElementById('login-err').textContent = '';
 }
 
-async function handleAuth() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errEl = document.getElementById('loginError');
-  errEl.textContent = '';
-  if (!email || !password) { errEl.textContent = 'メールとパスワードを入力してください'; return; }
+async function doAuth() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-err');
+  const btn = document.getElementById('auth-btn');
+  err.textContent = '';
+  if (!email || !pass) { err.textContent = 'メールとパスワードを入力してください'; return; }
+  btn.textContent = '処理中…'; btn.disabled = true;
   try {
-    if (loginMode === 'login') {
-      console.log('ログイン試行中...');
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      console.log('結果:', data, error);
+    let data, error;
+    if (authMode === 'login') {
+      ({data, error} = await sb.auth.signInWithPassword({email, password: pass}));
       if (error) throw error;
-      if (data?.user) {
-        console.log('ユーザー確認OK、データ読み込み開始');
-        currentUser = data.user;
-        await loadAll();
-        console.log('データ読み込み完了、画面切り替え');
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('appScreen').style.display = 'block';
-        renderAll();
-        renderDonut();
-      } else {
-        console.log('userがnull');
-      }
+      // onAuthStateChange が SIGNED_IN を検知して startApp を呼ぶ
     } else {
-      const { data, error } = await sb.auth.signUp({ email, password });
+      ({data, error} = await sb.auth.signUp({email, password: pass}));
       if (error) throw error;
-      if (data?.user?.identities?.length === 0) {
-        errEl.textContent = 'このメールは既に登録されています';
-      } else {
-        errEl.textContent = '登録しました！ログインしてください';
-        switchLoginTab('login');
+      if (!data.session) {
+        err.style.color = 'var(--accent)';
+        err.textContent = '登録しました！ログインタブからログインしてください。';
       }
     }
   } catch(e) {
-    console.error('エラー:', e);
-    errEl.textContent = e.message || 'エラーが発生しました';
+    let msg = e.message || 'エラーが発生しました';
+    if (msg.includes('Invalid login') || msg.includes('invalid_credentials')) msg = 'メールまたはパスワードが違います';
+    if (msg.includes('User already registered')) msg = 'このメールはすでに登録済みです';
+    err.textContent = msg;
   }
+  btn.textContent = authMode === 'login' ? 'ログイン' : '新規登録';
+  btn.disabled = false;
 }
 
-async function signOut() {
+// ── AUTH STATE LISTENER & LOGOUT ──
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_IN' && session && !currentUser) {
+    startApp(session.user);
+  } else if (event === 'SIGNED_OUT') {
+    currentUser = null;
+    categories = [];
+    history = [];
+    document.getElementById('appScreen').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-pass').value = '';
+  }
+});
+
+async function doLogout() {
   await sb.auth.signOut({ scope: 'local' });
   currentUser = null;
   categories = [];
   history = [];
   document.getElementById('appScreen').style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
-  document.getElementById('loginEmail').value = '';
-  document.getElementById('loginPassword').value = '';
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value = '';
 }
 
-sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' && session && !currentUser) {
-    currentUser = session.user;
-    await loadAll();
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = 'block';
-    renderAll();
-    renderDonut();
-  } else if (event === 'SIGNED_OUT') {
-    currentUser = null;
-    categories = [];
-    history = [];
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = 'none';
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('loginEmail').value = '';
-    document.getElementById('loginPassword').value = '';
-  }
-});
-
-// ── 起動時セッション確認 ──
-(async () => {
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    if (session?.user && !currentUser) {
-      document.getElementById('loadingScreen').style.display = 'flex';
-      document.getElementById('loginScreen').style.display = 'none';
-      currentUser = session.user;
-      await loadAll();
-      document.getElementById('loadingScreen').style.display = 'none';
-      document.getElementById('appScreen').style.display = 'block';
-      renderAll();
-      renderDonut();
-    }
-  } catch(e) {
-    console.error('セッション確認エラー:', e);
-  }
-})();
+async function startApp(user) {
+  if (currentUser && currentUser.id === user.id) return; // 二重起動防止
+  currentUser = user;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  await loadAll();
+  renderAll();
+  renderDonut();
+}
 
 // ── データ読み込み ──
 async function loadAll() {
