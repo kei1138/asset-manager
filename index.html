@@ -154,13 +154,13 @@ canvas.line-canvas { display:block; width:100%; }
 <body>
 
 <!-- ローディング -->
-<div id="loadingScreen">
+<div id="loadingScreen" style="display:none;position:fixed;inset:0;background:var(--text);align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:12px;">
   <div class="loading-title">ASSET MANAGER</div>
   <div class="spinner"></div>
 </div>
 
 <!-- ログイン -->
-<div id="loginScreen" style="display:none;min-height:100vh;align-items:center;justify-content:center;flex-direction:column;padding:24px;background:#1c1c2e">
+<div id="loginScreen" style="display:flex;min-height:100vh;align-items:center;justify-content:center;flex-direction:column;padding:24px;background:#1c1c2e">
   <div class="login-title">ASSET MANAGER</div>
   <div class="login-card">
     <div class="login-tabs">
@@ -382,20 +382,17 @@ sb.auth.onAuthStateChange(async (event, session) => {
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (session?.user && !currentUser) {
+      document.getElementById('loadingScreen').style.display = 'flex';
+      document.getElementById('loginScreen').style.display = 'none';
       currentUser = session.user;
       await loadAll();
       document.getElementById('loadingScreen').style.display = 'none';
-      document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('appScreen').style.display = 'block';
       renderAll();
       renderDonut();
-    } else {
-      document.getElementById('loadingScreen').style.display = 'none';
-      document.getElementById('loginScreen').style.display = 'flex';
     }
   } catch(e) {
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('loginScreen').style.display = 'flex';
+    console.error('セッション確認エラー:', e);
   }
 })();
 
@@ -626,7 +623,14 @@ async function deleteItem(catId, itemId) {
   cat.items = cat.items.filter(i=>i.id!==itemId);
   renderAll();
   showSaving();
-  await sb.from('asset_items').delete().eq('id', itemId);
+  const { error } = await sb.from('asset_items').delete().eq('id', itemId);
+  if(error) {
+    console.error('項目削除エラー:', error);
+    alert('削除に失敗しました: ' + error.message);
+    await loadAll();
+    renderAll();
+    return;
+  }
   await recordHistory();
   showSaving('保存済み ✓');
 }
@@ -637,7 +641,14 @@ async function deleteCat(catId, e) {
   categories = categories.filter(c=>c.id!==catId);
   renderAll();
   showSaving();
-  await sb.from('asset_categories').delete().eq('id', catId);
+  const { error } = await sb.from('asset_categories').delete().eq('id', catId);
+  if(error) {
+    console.error('削除エラー:', error);
+    alert('削除に失敗しました: ' + error.message);
+    await loadAll();
+    renderAll();
+    return;
+  }
   await recordHistory();
   showSaving('保存済み ✓');
 }
