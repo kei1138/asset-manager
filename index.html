@@ -84,6 +84,8 @@ body { font-family:'Zen Kaku Gothic New',sans-serif; background:var(--bg); color
 .cat-chevron.open { transform:rotate(90deg); }
 .cat-del { width:26px; height:26px; border-radius:50%; border:none; background:none; color:var(--text3); font-size:17px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
 .cat-del:hover { background:#fee2e2; color:var(--danger); }
+.cat-edit { width:26px; height:26px; border-radius:50%; border:none; background:none; color:var(--text3); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s; }
+.cat-edit:hover { background:#e8f0f8; color:var(--accent); }
 .cat-body { border-top:1px solid var(--border); }
 .sub-row { display:flex; align-items:center; gap:8px; padding:10px 14px 10px 26px; border-bottom:1px solid var(--border); }
 .sub-row:last-of-type { border-bottom:none; }
@@ -268,6 +270,20 @@ canvas.line-canvas { display:block; width:100%; }
   </div>
 </div>
 
+<!-- カテゴリ編集モーダル -->
+<div class="modal-overlay" id="editCatModal" onclick="closeEditCatModal(event)">
+  <div class="modal">
+    <h3>カテゴリを編集</h3>
+    <input class="modal-input" id="editCatName" placeholder="カテゴリ名">
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text3);letter-spacing:0.1em;margin-bottom:8px">カラー</div>
+      <div id="colorPicker" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+    <button class="modal-btn" onclick="confirmEditCat()">保存する</button>
+    <button class="modal-cancel" onclick="closeEditCatModal()">キャンセル</button>
+  </div>
+</div>
+
 <div class="saving-indicator" id="savingIndicator">保存中...</div>
 
 <script>
@@ -330,11 +346,18 @@ async function handleAuth() {
 }
 
 async function signOut() {
-  await sb.auth.signOut();
+  await sb.auth.signOut({ scope: 'local' });
+  currentUser = null;
+  categories = [];
+  history = [];
+  document.getElementById('appScreen').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
 }
 
 sb.auth.onAuthStateChange(async (event, session) => {
-  if (session?.user) {
+  if (event === 'SIGNED_IN' && session && !currentUser) {
     currentUser = session.user;
     await loadAll();
     document.getElementById('loadingScreen').style.display = 'none';
@@ -342,11 +365,15 @@ sb.auth.onAuthStateChange(async (event, session) => {
     document.getElementById('appScreen').style.display = 'block';
     renderAll();
     renderDonut();
-  } else {
+  } else if (event === 'SIGNED_OUT') {
     currentUser = null;
+    categories = [];
+    history = [];
     document.getElementById('loadingScreen').style.display = 'none';
     document.getElementById('appScreen').style.display = 'none';
     document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('loginEmail').value = '';
+    document.getElementById('loginPassword').value = '';
   }
 });
 
@@ -445,10 +472,12 @@ function renderAssets() {
         <div class="cat-meta">${fmtShort(cTot)} · ${pct}%</div>
       </div>
       <span class="cat-chevron${cat.open?' open':''}">▶</span>
+      <button class="cat-edit" onclick="openEditCat('${cat.id}',event)">✎</button>
       <button class="cat-del" onclick="deleteCat('${cat.id}',event)">×</button>
     `;
     hdr.addEventListener('click', e => {
       if(e.target.classList.contains('cat-del')) return;
+      if(e.target.classList.contains('cat-edit')) return;
       cat.open = !cat.open; renderAssets();
     });
     card.appendChild(hdr);
@@ -612,6 +641,56 @@ async function addCategory() {
 }
 function closeModal(e) { if(e.target===document.getElementById('addCatModal')) closeModalDirect(); }
 function closeModalDirect() { document.getElementById('addCatModal').classList.remove('open'); }
+
+let editingCatId = null;
+let editingCatColor = null;
+
+function openEditCat(catId, e) {
+  e.stopPropagation();
+  const cat = categories.find(c=>c.id===catId);
+  if(!cat) return;
+  editingCatId = catId;
+  editingCatColor = cat.color;
+  document.getElementById('editCatName').value = cat.name;
+  const picker = document.getElementById('colorPicker');
+  picker.innerHTML = PALETTE.map(color => `
+    <div onclick="selectEditColor('${color}')" id="cp_${color.slice(1)}" style="
+      width:28px;height:28px;border-radius:50%;background:${color};cursor:pointer;
+      border:3px solid ${color===cat.color?'#1c1c2e':'transparent'};
+      transition:border 0.15s;box-sizing:border-box;
+    "></div>
+  `).join('');
+  document.getElementById('editCatModal').classList.add('open');
+  setTimeout(()=>document.getElementById('editCatName').focus(), 300);
+}
+
+function selectEditColor(color) {
+  editingCatColor = color;
+  PALETTE.forEach(c => {
+    const el = document.getElementById(`cp_${c.slice(1)}`);
+    if(el) el.style.border = `3px solid ${c===color?'#1c1c2e':'transparent'}`;
+  });
+}
+
+async function confirmEditCat() {
+  const name = document.getElementById('editCatName').value.trim();
+  if(!name || !editingCatId) return;
+  const cat = categories.find(c=>c.id===editingCatId);
+  if(!cat) return;
+  cat.name = name;
+  cat.color = editingCatColor;
+  closeEditCatModal();
+  renderAll();
+  showSaving();
+  await sb.from('asset_categories').update({ name, color: editingCatColor }).eq('id', editingCatId);
+  showSaving('保存済み ✓');
+}
+
+function closeEditCatModal(e) {
+  if(e && e.target!==document.getElementById('editCatModal')) return;
+  document.getElementById('editCatModal').classList.remove('open');
+  editingCatId = null;
+}
 
 // ── 円グラフ ──
 function renderDonut() {
@@ -798,6 +877,15 @@ function renderAll() {
   document.addEventListener('focusout',e=>{
     if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) setTimeout(()=>vp.setAttribute('content',orig),300);
   });
+})();
+
+// ── 初期セッション確認 ──
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) {
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
 })();
 </script>
 </body>
