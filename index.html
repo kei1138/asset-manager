@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:;">
 <title>資産管理</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -332,15 +331,21 @@ async function handleAuth() {
   if (!email || !password) { errEl.textContent = 'メールとパスワードを入力してください'; return; }
   try {
     if (loginMode === 'login') {
+      console.log('ログイン試行中...');
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      console.log('結果:', data, error);
       if (error) throw error;
       if (data?.user) {
+        console.log('ユーザー確認OK、データ読み込み開始');
         currentUser = data.user;
         await loadAll();
+        console.log('データ読み込み完了、画面切り替え');
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('appScreen').style.display = 'block';
         renderAll();
         renderDonut();
+      } else {
+        console.log('userがnull');
       }
     } else {
       const { data, error } = await sb.auth.signUp({ email, password });
@@ -353,6 +358,7 @@ async function handleAuth() {
       }
     }
   } catch(e) {
+    console.error('エラー:', e);
     errEl.textContent = e.message || 'エラーが発生しました';
   }
 }
