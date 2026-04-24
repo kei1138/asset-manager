@@ -377,6 +377,28 @@ sb.auth.onAuthStateChange(async (event, session) => {
   }
 });
 
+// ── 起動時セッション確認 ──
+(async () => {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user && !currentUser) {
+      currentUser = session.user;
+      await loadAll();
+      document.getElementById('loadingScreen').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appScreen').style.display = 'block';
+      renderAll();
+      renderDonut();
+    } else {
+      document.getElementById('loadingScreen').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+    }
+  } catch(e) {
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
+})();
+
 // ── データ読み込み ──
 async function loadAll() {
   await loadCategories();
@@ -877,15 +899,6 @@ function renderAll() {
   document.addEventListener('focusout',e=>{
     if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) setTimeout(()=>vp.setAttribute('content',orig),300);
   });
-})();
-
-// ── 初期セッション確認 ──
-(async () => {
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) {
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('loginScreen').style.display = 'flex';
-  }
 })();
 </script>
 </body>
