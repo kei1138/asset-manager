@@ -331,15 +331,26 @@ async function handleAuth() {
   errEl.textContent = '';
   if (!email || !password) { errEl.textContent = 'メールとパスワードを入力してください'; return; }
   try {
-    let result;
     if (loginMode === 'login') {
-      result = await sb.auth.signInWithPassword({ email, password });
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data?.user) {
+        currentUser = data.user;
+        await loadAll();
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appScreen').style.display = 'block';
+        renderAll();
+        renderDonut();
+      }
     } else {
-      result = await sb.auth.signUp({ email, password });
-    }
-    if (result.error) throw result.error;
-    if (loginMode === 'signup' && result.data?.user?.identities?.length === 0) {
-      errEl.textContent = 'このメールは既に登録されています';
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data?.user?.identities?.length === 0) {
+        errEl.textContent = 'このメールは既に登録されています';
+      } else {
+        errEl.textContent = '登録しました！ログインしてください';
+        switchLoginTab('login');
+      }
     }
   } catch(e) {
     errEl.textContent = e.message || 'エラーが発生しました';
