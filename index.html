@@ -90,7 +90,10 @@ body { font-family:'Zen Kaku Gothic New',sans-serif; background:var(--bg); color
 .sub-del { width:22px; height:22px; border-radius:50%; border:none; background:none; color:var(--text3); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .sub-del:hover { background:#fee2e2; color:var(--danger); }
 .add-sub-row { display:flex; align-items:center; gap:6px; padding:9px 14px 9px 26px; border-top:1px solid var(--border); }
-.drag-handle { color:var(--text3); font-size:16px; cursor:grab; padding:0 4px; flex-shrink:0; user-select:none; }
+.cat-drag-handle { color:var(--text3); font-size:18px; cursor:grab; padding:0 4px; flex-shrink:0; user-select:none; }
+.cat-drag-handle:active { cursor:grabbing; }
+.cat-card.dragging { opacity:0.4; }
+.cat-card.drag-over { border-top:2px solid var(--accent); }
 .drag-handle:active { cursor:grabbing; }
 .sub-row.dragging { opacity:0.4; background:var(--bg); }
 .sub-row.drag-over { border-top:2px solid var(--accent); }
@@ -477,9 +480,16 @@ function renderAssets() {
     const pct = tot > 0 ? (cTot/tot*100).toFixed(1) : '0.0';
     const card = document.createElement('div');
     card.className = 'cat-card';
+    card.draggable = true;
+    card.dataset.catId = cat.id;
+    card.addEventListener('dragstart', e => catDragStart(e, cat.id));
+    card.addEventListener('dragover', e => catDragOver(e));
+    card.addEventListener('drop', e => catDragDrop(e, cat.id));
+    card.addEventListener('dragend', () => catDragEnd());
     const hdr = document.createElement('div');
     hdr.className = 'cat-header';
     hdr.innerHTML = `
+      <div class="cat-drag-handle" ontouchstart="catTouchStart(event,'${cat.id}')" ontouchmove="catTouchMove(event)" ontouchend="catTouchEnd(event,'${cat.id}')">⠿</div>
       <div class="cat-bar" style="background:${cat.color}"></div>
       <div class="cat-info">
         <div class="cat-name">${cat.name}</div>
@@ -492,6 +502,7 @@ function renderAssets() {
     hdr.addEventListener('click', e => {
       if(e.target.classList.contains('cat-del')) return;
       if(e.target.classList.contains('cat-edit')) return;
+      if(e.target.classList.contains('cat-drag-handle')) return;
       cat.open = !cat.open; renderAssets();
     });
     card.appendChild(hdr);
@@ -520,8 +531,8 @@ function renderAssets() {
       const addRow = document.createElement('div');
       addRow.className = 'add-sub-row';
       addRow.innerHTML = `
-        <input class="sub-input" id="sn_${cat.id}" placeholder="項目名">
-        <input class="amt-input" id="sa_${cat.id}" type="number" placeholder="金額" min="0">
+        <input class="sub-input" id="sn_${cat.id}" placeholder="項目名" onkeydown="if(event.key==='Enter'){document.getElementById('sa_${cat.id}').focus();}">
+        <input class="amt-input" id="sa_${cat.id}" type="number" placeholder="金額" min="0" onkeydown="if(event.key==='Enter'){addItem('${cat.id}');}">
         <button class="add-sub-btn" onclick="addItem('${cat.id}')">+</button>
       `;
       body.appendChild(addRow);
@@ -529,6 +540,87 @@ function renderAssets() {
     }
     list.appendChild(card);
   });
+}
+
+// ── カテゴリドラッグ&ドロップ ──
+let catDragId = null;
+let catTouchClone = null;
+let catTouchId = null;
+
+function catDragStart(e, catId) {
+  catDragId = catId;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function catDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.cat-card').forEach(c => c.classList.remove('drag-over'));
+  e.currentTarget.classList.add('drag-over');
+}
+function catDragDrop(e, catId) {
+  e.preventDefault();
+  if(!catDragId || catDragId === catId) return;
+  const fromIdx = categories.findIndex(c=>c.id===catDragId);
+  const toIdx = categories.findIndex(c=>c.id===catId);
+  if(fromIdx===-1||toIdx===-1) return;
+  const [moved] = categories.splice(fromIdx, 1);
+  categories.splice(toIdx, 0, moved);
+  saveCatOrder();
+  renderAll();
+}
+function catDragEnd() {
+  document.querySelectorAll('.cat-card').forEach(c => {
+    c.classList.remove('dragging');
+    c.classList.remove('drag-over');
+  });
+}
+
+// タッチ操作
+function catTouchStart(e, catId) {
+  catTouchId = catId;
+  const card = document.querySelector(`[data-cat-id="${catId}"]`);
+  card.classList.add('dragging');
+  catTouchClone = card.cloneNode(true);
+  catTouchClone.style.cssText = `position:fixed;z-index:999;opacity:0.8;pointer-events:none;width:${card.offsetWidth}px;background:var(--surface);border-radius:14px;box-shadow:0 4px 12px rgba(0,0,0,0.2);`;
+  document.body.appendChild(catTouchClone);
+}
+function catTouchMove(e) {
+  e.preventDefault();
+  if(!catTouchClone) return;
+  const t = e.touches[0];
+  catTouchClone.style.left = (t.clientX - 20) + 'px';
+  catTouchClone.style.top = (t.clientY - 30) + 'px';
+  document.querySelectorAll('.cat-card').forEach(c => c.classList.remove('drag-over'));
+  const el = document.elementFromPoint(t.clientX, t.clientY)?.closest('.cat-card');
+  if(el && el.dataset.catId !== catTouchId) el.classList.add('drag-over');
+}
+function catTouchEnd(e) {
+  if(catTouchClone) { catTouchClone.remove(); catTouchClone = null; }
+  const t = e.changedTouches[0];
+  const el = document.elementFromPoint(t.clientX, t.clientY)?.closest('.cat-card');
+  const targetId = el?.dataset.catId;
+  if(targetId && targetId !== catTouchId) {
+    const fromIdx = categories.findIndex(c=>c.id===catTouchId);
+    const toIdx = categories.findIndex(c=>c.id===targetId);
+    if(fromIdx!==-1 && toIdx!==-1) {
+      const [moved] = categories.splice(fromIdx, 1);
+      categories.splice(toIdx, 0, moved);
+      saveCatOrder();
+    }
+  }
+  document.querySelectorAll('.cat-card').forEach(c => {
+    c.classList.remove('dragging');
+    c.classList.remove('drag-over');
+  });
+  renderAll();
+}
+
+async function saveCatOrder() {
+  const updates = categories.map((cat, idx) =>
+    sb.from('asset_categories').update({ position: idx }).eq('id', cat.id)
+  );
+  await Promise.all(updates);
 }
 
 // ── ドラッグ&ドロップ並び替え ──
@@ -640,13 +732,13 @@ function startEditName(catId, itemId) {
   if(!item) return;
   row.style.flexWrap = 'wrap';
   row.querySelector('.sub-name').outerHTML = `
-    <div style="flex:1;min-width:0">
+    <div style="flex:1;min-width:0;display:flex;align-items:center;gap:4px">
       <input class="inline-name-input" id="in_${itemId}" type="text" value="${item.name}">
+      <button class="inline-ok" onclick="confirmEditName('${catId}','${itemId}')">OK</button>
     </div>`;
   const inp = document.getElementById(`in_${itemId}`);
   inp?.focus(); inp?.select();
-  inp?.addEventListener('blur', () => confirmEditName(catId, itemId));
-  inp?.addEventListener('keydown', e => { if(e.key==='Enter') inp.blur(); });
+  inp?.addEventListener('keydown', e => { if(e.key==='Enter') confirmEditName(catId, itemId); });
 }
 
 async function confirmEditName(catId, itemId) {
@@ -673,11 +765,13 @@ function startEdit(catId, itemId) {
   const item = categories.find(c=>c.id===catId)?.items.find(i=>i.id===itemId);
   if(!item) return;
   row.querySelector('.sub-amt').outerHTML = `
-    <input class="inline-input" id="ii_${itemId}" type="number" value="${item.amount}" min="0">`;
+    <div class="inline-wrap" style="flex-shrink:0">
+      <input class="inline-input" id="ii_${itemId}" type="number" value="${item.amount}" min="0">
+      <button class="inline-ok" onclick="confirmEdit('${catId}','${itemId}')">OK</button>
+    </div>`;
   const inp = document.getElementById(`ii_${itemId}`);
   inp?.focus();
-  inp?.addEventListener('blur', () => confirmEdit(catId, itemId));
-  inp?.addEventListener('keydown', e => { if(e.key==='Enter') inp.blur(); });
+  inp?.addEventListener('keydown', e => { if(e.key==='Enter') confirmEdit(catId, itemId); });
 }
 
 async function confirmEdit(catId, itemId) {
